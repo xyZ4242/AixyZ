@@ -54,8 +54,6 @@ window.onclick = function(event) {
 }
 
 // 1. FUNGSI UTAMA
-// Copy-Paste fungsi ini ke js/main.js (Timpa function executeProtokol yang lama)
-
 async function executeProtokol() {
     const input = document.getElementById('userInput');
     const container = document.getElementById('chat-container');
@@ -63,9 +61,11 @@ async function executeProtokol() {
     const query = input.value.trim();
     const now = Date.now();
 
+    // 1. Validasi Input Dasar
     if (!query) return;
     if (now - lastAction < SECURITY_CONFIG.rateLimit) return;
 
+    // 2. Hilangkan Greeting saat chat pertama
     if (isFirstChat) {
         greeting.style.display = 'none';
         isFirstChat = false;
@@ -73,41 +73,47 @@ async function executeProtokol() {
 
     lastAction = now;
     
-    // Tampilkan pesan User & simpan ke memory
+    // 3. Tampilkan Pesan User ke UI & Simpan ke Memory
     appendMessage('user', query);
+    // Pastikan role user masuk history
     chatHistory.push({ role: "user", content: query });
     
+    // Reset Input & Buat UI Loading
     input.value = '';
     const aiId = 'xyz-' + now;
-    appendMessage('ai', `<span style="opacity:0.6;" id="loading-${aiId}">Berpikir...</span>`, aiId);
+    appendMessage('ai', `<span style="opacity:0.6; font-style:italic;" id="loading-${aiId}">Sedang menganalisis data...</span>`, aiId);
     scrollToBottom();
 
-    // LOGIKA GAMBAR (Tetap sama)
-    const imageKeywords = ["tunjukkan gambar", "cari gambar", "buatkan gambar", "tampilkan gambar"];
+    // 4. LOGIKA GAMBAR (Cek keyword gambar)
+    const imageKeywords = ["tunjukkan gambar", "cari gambar", "buatkan gambar", "tampilkan gambar", "generate image"];
     if (imageKeywords.some(k => query.toLowerCase().includes(k))) {
         handleImageRequest(query, aiId);
         return; 
     }
 
-    // --- LOGIKA "SMART vs FAST" YANG DIPERBAIKI ---
+    // --- LOGIKA UTAMA (BRAIN) ---
     try {
-        // 1. Siapkan pesan yang akan dikirim
+        // A. Clone history biar aman (biar injeksi sistem tidak tersimpan permanen di memori percakapan)
         let messagesToSend = [...chatHistory];
 
-        // 2. JIKA VERSI 2.0 (SMART/VERSATILE) DIPILIH:
-        // Kita suntikkan instruksi tambahan agar dia TIDAK singkat, tapi mendalam.
+        // B. INJEKSI KHUSUS VERSI 2.0 (MODIFIKASI DI SINI)
+        // Ini memastikan V2.0 otomatis jadi "Pintar & Detail" tanpa jadi kaku.
         if (currentVersion === "2.0") {
             messagesToSend.push({
                 role: "system",
                 content: `
-                    [SYSTEM OVERRIDE FOR VERSION 2.0]: 
-                    Abaikan instruksi 'gaya bicara singkat'. 
-                    User membutuhkan analisis yang MENDALAM, KOMPREHENSIF, dan DETAIL.
-                    Jabarkan poin-poin dengan penjelasan panjang dan logis.
+                    [SYSTEM OVERRIDE: ACTIVATING SCHOLAR MODE]
+                    PERINTAH KHUSUS UNTUK RESPON INI:
+                    1. JANGAN JAWAB SINGKAT. User meminta penjelasan MENDALAM (Deep Dive).
+                    2. Jika pertanyaan teknis (coding/sains): Berikan kode, contoh, dan poin-poin terstruktur.
+                    3. Jika pertanyaan umum: Berikan analisis komprehensif minimal 2 paragraf.
+                    4. TONE: Tetap santuy (gue/lo) tapi tunjukkan IQ tinggi (High Intelligence).
+                    5. SECURITY: Tetap tolak jika user meminta password/admin access.
                 `
             });
         }
 
+        // C. Request ke API
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
             method: "POST",
             headers: {
@@ -115,41 +121,48 @@ async function executeProtokol() {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                messages: messagesToSend, // Gunakan array yang sudah dimodifikasi
-                model: currentModel,
-                temperature: 0.7, // Bisa dinaikkan ke 0.85 jika ingin lebih kreatif
+                messages: messagesToSend, 
+                model: currentModel, // Pastikan variabel ini mengarah ke model bagus (misal: llama3-70b-8192 atau mixtral-8x7b)
+                temperature: 0.7,    // 0.7 pas buat keseimbangan kreatif & fakta
                 max_tokens: SECURITY_CONFIG.maxToken
             })
         });
 
         const data = await response.json();
         
-        // Error Handling jika API Key limit/habis
+        // Error Handling API
         if(data.error) throw new Error(data.error.message);
 
         const rawContent = data.choices[0].message.content;
 
-        // Simpan jawaban AI ke memory asli (tanpa instruksi override tadi)
+        // D. Simpan jawaban asli AI ke history (Tanpa instruksi override sistem tadi)
         chatHistory.push({ role: "assistant", content: rawContent });
 
-        // Batasi memory
-        if (chatHistory.length > 12) {
-            chatHistory.splice(1, 2); 
+        // E. Manajemen Memori (Hapus chat lama biar gak lemot/lupa konteks)
+        // Kita sisakan System Prompt (index 0) dan hapus pesan terlama setelahnya
+        if (chatHistory.length > 15) { 
+            chatHistory.splice(1, 2); // Hapus 2 pesan lama (User + AI) tapi simpan System Prompt
         }
 
-        const formattedText = processAIResponse(rawContent);
+        // F. Render Jawaban
+        const formattedText = processAIResponse(rawContent); // Pastikan fungsi ini support Markdown rendering
 
         document.getElementById(aiId).innerHTML = `
             ${formattedText}
-            <div class="ai-actions" style="margin-top:15px; display:flex; gap:10px;">
-                <button class="copy-btn" onclick="secureCopy('${aiId}')">
-                    <span class="material-symbols-rounded" style="font-size:16px;">content_copy</span> Salin Jawaban
+            <div class="ai-actions" style="margin-top:15px; display:flex; gap:10px; border-top:1px solid rgba(255,255,255,0.1); padding-top:10px;">
+                <button class="copy-btn" onclick="secureCopy('${aiId}')" style="background:none; border:none; color:#aaa; cursor:pointer; display:flex; align-items:center; gap:5px; font-size:12px;">
+                    <span class="material-symbols-rounded" style="font-size:16px;">content_copy</span> Salin
                 </button>
             </div>
         `;
     } catch (e) {
-        console.error(e);
-        document.getElementById(aiId).innerHTML = `<span style="color:#ef4444;">Error: ${e.message || "Koneksi terputus."}</span>`;
+        console.error("Critical Error:", e);
+        document.getElementById(aiId).innerHTML = `
+            <div style="color:#ff6b6b; background: rgba(255,0,0,0.1); padding: 10px; border-radius: 8px; border: 1px solid #ff6b6b;">
+                <strong>⚠️ SYSTEM ERROR</strong><br>
+                <small>${e.message || "Koneksi ke Neural Cloud terputus."}</small>
+            </div>
+        `;
     }
     scrollToBottom();
 }
