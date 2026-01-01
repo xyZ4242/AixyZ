@@ -7,11 +7,14 @@ let isFirstChat = true;
 
 // --- FITUR MEMORY: Menyimpan konteks obrolan ---
 let chatHistory = [
-    { role: "system", content: AI_IDENTITY }
+    // Pastikan ini sesuai dengan nama variabel di personality.js (SECURITY_PROMPT)
+    { role: "system", content: SECURITY_PROMPT }
 ];
 
 // Variable State
 let currentVersion = "1.0";
+// PERBAIKAN 1: Definisi default model di awal
+let currentModel = "llama-3.1-8b-instant"; 
 
 function toggleModelMenu() {
     const dropdown = document.getElementById('modelDropdown');
@@ -24,28 +27,26 @@ function selectModel(version, type) {
     // 1. Update Teks di Header
     document.getElementById('version-label').innerText = version;
     
-    // 2. Update Visual Dropdown (Centang & Background)
+    // 2. Update Visual Dropdown
     const items = document.querySelectorAll('.dropdown-item');
     items.forEach(item => {
-        item.classList.remove('active'); // Hapus semua centang & highlight
+        item.classList.remove('active');
     });
     
-    // Cari elemen yang diklik dan aktifkan
     const selectedItem = (version === "1.0") ? items[0] : items[1];
     selectedItem.classList.add('active');
     
-    // 3. Set Model AI
+    // 3. Set Model AI (LOGIKA SUDAH BENAR DISINI)
     if(version === "1.0") {
-        currentModel = "llama-3.1-8b-instant";
+        currentModel = "llama-3.1-8b-instant"; // Model Cepat
     } else {
-        currentModel = "llama-3.3-70b-versatile";
+        currentModel = "llama-3.3-70b-versatile"; // Model Pintar
     }
     
     // Tutup menu
     toggleModelMenu();
 }
 
-// Tutup jika klik di luar
 window.onclick = function(event) {
     if (!event.target.closest('.model-menu-wrapper')) {
         document.getElementById('modelDropdown').classList.remove('show');
@@ -70,7 +71,6 @@ async function executeProtokol() {
 
     lastAction = now;
     
-    // Tampilkan pesan User & simpan ke memory
     appendMessage('user', query);
     chatHistory.push({ role: "user", content: query });
     
@@ -79,14 +79,14 @@ async function executeProtokol() {
     appendMessage('ai', `<span style="opacity:0.6;" id="loading-${aiId}">Berpikir...</span>`, aiId);
     scrollToBottom();
 
-    // 2. LOGIKA SEARCH GAMBAR (Tanpa Memory agar tidak boros token)
+    // 2. LOGIKA SEARCH GAMBAR
     const imageKeywords = ["tunjukkan gambar", "cari gambar", "buatkan gambar", "tampilkan gambar"];
     if (imageKeywords.some(k => query.toLowerCase().includes(k))) {
         handleImageRequest(query, aiId);
         return; 
     }
 
-    // 3. LOGIKA TEKS/CODING DENGAN MEMORY
+    // 3. LOGIKA TEKS/CODING
     try {
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
             method: "POST",
@@ -95,8 +95,8 @@ async function executeProtokol() {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                messages: chatHistory, // Mengirim seluruh riwayat
-                model: "llama-3.3-70b-versatile",
+                messages: chatHistory,
+                model: currentModel, // PERBAIKAN 2: Panggil variable, jangan hardcode!
                 temperature: 0.7,
                 max_tokens: SECURITY_CONFIG.maxToken
             })
@@ -105,10 +105,8 @@ async function executeProtokol() {
         const data = await response.json();
         const rawContent = data.choices[0].message.content;
 
-        // Simpan jawaban AI ke memory
         chatHistory.push({ role: "assistant", content: rawContent });
 
-        // Batasi memory (Keep system prompt + 10 pesan terakhir)
         if (chatHistory.length > 12) {
             chatHistory.splice(1, 2); 
         }
@@ -129,7 +127,7 @@ async function executeProtokol() {
     scrollToBottom();
 }
 
-// 4. FIX RENDER CODE (PENTING!)
+// 4. FIX RENDER CODE
 function processAIResponse(text) {
     const escapeHTML = (str) => str.replace(/[&<>"']/g, m => ({
         '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
@@ -147,28 +145,16 @@ function processAIResponse(text) {
             </div>`;
     });
 
-    // Perbaikan Styling Tulisan:
-    
-    // 1. Bold: **Teks** jadi <b>Teks</b>
     processed = processed.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
-    
-    // 2. Italic: *Teks* jadi <i>Teks</i>
     processed = processed.replace(/\*(.*?)\*/g, '<i style="opacity:0.9;">$1</i>');
-
-    // 3. Blockquote: > Teks
     processed = processed.replace(/^> (.*$)/gim, '<blockquote>$1</blockquote>');
-
-    // 4. List: Menambah margin pada bullet points agar tidak rapat
     processed = processed.replace(/^\* (.*$)/gim, '<div style="margin-bottom: 8px; display: flex; gap: 10px;"><span>•</span> <span>$1</span></div>');
-
-    // 5. Line Breaks
     processed = processed.replace(/\n/g, '<br>');
     
     return processed;
 }
 
-
-// 5. FIX IMAGE SEARCH (Gunakan Keywords yang bersih)
+// 5. FIX IMAGE SEARCH
 function handleImageRequest(query, aiId) {
     let keyword = query.toLowerCase();
     ["tunjukkan gambar", "cari gambar", "buatkan gambar", "tampilkan gambar"].forEach(k => keyword = keyword.replace(k, ""));
@@ -191,7 +177,7 @@ function handleImageRequest(query, aiId) {
     `;
 }
 
-// 6. SECURE COPY (Tahan banting)
+// 6. SECURE COPY
 function secureCopy(elementId) {
     const el = document.getElementById(elementId);
     const text = el.innerText.replace("content_copy Salin Jawaban", "").replace("open_in_new Google Images", "").trim();
