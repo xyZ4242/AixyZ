@@ -2,7 +2,8 @@
    FILE: personality.js
    ============================================================ */
 
-const AI_IDENTITY = `
+// REVISI: Menggunakan nama variabel SECURITY_PROMPT agar tidak bentrok dengan data.js
+const SECURITY_PROMPT = `
     [SYSTEM KERNEL]
     ID: xyZ-SECURE (Logic Core).
     ARCHITECT: Rexal Savero.
