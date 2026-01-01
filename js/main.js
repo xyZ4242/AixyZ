@@ -54,6 +54,8 @@ window.onclick = function(event) {
 }
 
 // 1. FUNGSI UTAMA
+// Copy-Paste fungsi ini ke js/main.js (Timpa function executeProtokol yang lama)
+
 async function executeProtokol() {
     const input = document.getElementById('userInput');
     const container = document.getElementById('chat-container');
@@ -71,6 +73,7 @@ async function executeProtokol() {
 
     lastAction = now;
     
+    // Tampilkan pesan User & simpan ke memory
     appendMessage('user', query);
     chatHistory.push({ role: "user", content: query });
     
@@ -79,15 +82,32 @@ async function executeProtokol() {
     appendMessage('ai', `<span style="opacity:0.6;" id="loading-${aiId}">Berpikir...</span>`, aiId);
     scrollToBottom();
 
-    // 2. LOGIKA SEARCH GAMBAR
+    // LOGIKA GAMBAR (Tetap sama)
     const imageKeywords = ["tunjukkan gambar", "cari gambar", "buatkan gambar", "tampilkan gambar"];
     if (imageKeywords.some(k => query.toLowerCase().includes(k))) {
         handleImageRequest(query, aiId);
         return; 
     }
 
-    // 3. LOGIKA TEKS/CODING
+    // --- LOGIKA "SMART vs FAST" YANG DIPERBAIKI ---
     try {
+        // 1. Siapkan pesan yang akan dikirim
+        let messagesToSend = [...chatHistory];
+
+        // 2. JIKA VERSI 2.0 (SMART/VERSATILE) DIPILIH:
+        // Kita suntikkan instruksi tambahan agar dia TIDAK singkat, tapi mendalam.
+        if (currentVersion === "2.0") {
+            messagesToSend.push({
+                role: "system",
+                content: `
+                    [SYSTEM OVERRIDE FOR VERSION 2.0]: 
+                    Abaikan instruksi 'gaya bicara singkat'. 
+                    User membutuhkan analisis yang MENDALAM, KOMPREHENSIF, dan DETAIL.
+                    Jabarkan poin-poin dengan penjelasan panjang dan logis.
+                `
+            });
+        }
+
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
             method: "POST",
             headers: {
@@ -95,18 +115,24 @@ async function executeProtokol() {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                messages: chatHistory,
-                model: currentModel, // PERBAIKAN 2: Panggil variable, jangan hardcode!
-                temperature: 0.7,
+                messages: messagesToSend, // Gunakan array yang sudah dimodifikasi
+                model: currentModel,
+                temperature: 0.7, // Bisa dinaikkan ke 0.85 jika ingin lebih kreatif
                 max_tokens: SECURITY_CONFIG.maxToken
             })
         });
 
         const data = await response.json();
+        
+        // Error Handling jika API Key limit/habis
+        if(data.error) throw new Error(data.error.message);
+
         const rawContent = data.choices[0].message.content;
 
+        // Simpan jawaban AI ke memory asli (tanpa instruksi override tadi)
         chatHistory.push({ role: "assistant", content: rawContent });
 
+        // Batasi memory
         if (chatHistory.length > 12) {
             chatHistory.splice(1, 2); 
         }
@@ -122,10 +148,12 @@ async function executeProtokol() {
             </div>
         `;
     } catch (e) {
-        document.getElementById(aiId).innerText = "Koneksi terputus. Coba cek API Key atau kuota Groq-mu.";
+        console.error(e);
+        document.getElementById(aiId).innerHTML = `<span style="color:#ef4444;">Error: ${e.message || "Koneksi terputus."}</span>`;
     }
     scrollToBottom();
 }
+
 
 // 4. FIX RENDER CODE
 function processAIResponse(text) {
